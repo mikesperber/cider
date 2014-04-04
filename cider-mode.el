@@ -75,6 +75,7 @@
   nil
   " cider"
   cider-mode-map
+  (easy-menu-add cider-mode-menu)
   (make-local-variable 'completion-at-point-functions)
   (add-to-list 'completion-at-point-functions
                'cider-complete-at-point))

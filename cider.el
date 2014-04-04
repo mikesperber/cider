@@ -59,7 +59,9 @@
   :link '(url-link :tag "Github" "https://github.com/clojure-emacs/cider")
   :link '(emacs-commentary-link :tag "Commentary" "cider"))
 
-(require 'pkg-info)
+(condition-case nil
+    (require 'pkg-info)
+  (error nil))
 
 (require 'cider-client)
 (require 'cider-interaction)
@@ -84,7 +86,9 @@ This variable is used by the CIDER command."
 (defun cider-version ()
   "Display CIDER's version."
   (interactive)
-  (let ((version (pkg-info-version-info 'cider)))
+  (let ((version (if (fboundp 'pkg-info-version-info)
+                     (pkg-info-version-info 'cider)
+                   cider-version)))
     (message "CIDER %s" version)))
 
 ;;;###autoload
@@ -116,7 +120,9 @@ start the server."
                  cmd))))
         (set-process-filter process 'nrepl-server-filter)
         (set-process-sentinel process 'nrepl-server-sentinel)
-        (set-process-coding-system process 'utf-8-unix 'utf-8-unix)
+	(if (featurep 'xemacs)
+	    (set-process-coding-system process 'binary 'binary)
+	  (set-process-coding-system process 'utf-8-unix 'utf-8-unix))
         (with-current-buffer (process-buffer process)
           (setq nrepl-project-dir project-dir))
         (message "Starting nREPL server...")))))

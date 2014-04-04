@@ -42,6 +42,7 @@
 (require 'cl-lib)
 (require 'compile)
 (require 'tramp)
+(require 'overlay)
 
 (defconst cider-error-buffer "*cider-error*")
 (defconst cider-doc-buffer "*cider-doc*")
@@ -854,7 +855,11 @@ See `compilation-error-regexp-alist' for help on their format.")
 
 (add-to-list 'compilation-error-regexp-alist-alist
              (cons 'cider cider-compilation-regexp))
-(add-to-list 'compilation-error-regexp-alist 'cider)
+(if (boundp 'compilation-error-regexp-systems-list)
+    ;; XEmacs
+    (if (listp compilation-error-regexp-systems-list)
+	(add-to-list compilation-error-regexp-systems-list 'nrepl))
+  (add-to-list 'compilation-error-regexp-alist 'nrepl))
 
 (defun cider-extract-error-info (regexp message)
   "Extract error information with REGEXP against MESSAGE."

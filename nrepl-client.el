@@ -190,11 +190,7 @@ To be used for tooling calls (i.e. completion, eldoc, etc)")
          (string-to-number (match-string 1)))
         ((looking-at "\\([0-9]+\\):")
          (goto-char (match-end 0))
-         (let ((start (point))
-               (end (byte-to-position (+ (position-bytes (point))
-                                         (string-to-number (match-string 1))))))
-           (goto-char end)
-           (buffer-substring-no-properties start end)))
+	 (nrepl-decode-utf-8 (point) (string-to-number (match-string 1))))
         ((looking-at "l")
          (goto-char (match-end 0))
          (let (result item)
@@ -218,6 +214,19 @@ To be used for tooling calls (i.e. completion, eldoc, etc)")
         (t
          (error "Cannot decode object: %d" (point)))))
 
+(if (featurep 'xemacs)
+    (defun nrepl-decode-utf-8 (start count)
+      "Decode UTF-8 string from START whose encoding has COUNT bytes, and go to end position."
+      (let ((end (+ start count)))
+       (goto-char end)
+       (decode-coding-string (buffer-substring-no-properties start end) 'utf-8-unix 'nocopy)))
+  ; XEmacs version
+  (defun nrepl-decode-utf-8 (start count)
+    "Decode UTF-8 string from START whose encoding has COUNT bytes, and go to end position."
+    (let ((end (byte-to-position (+ (position-bytes (point)) (string-to-number (match-string 1))))))
+      (goto-char end)
+      (buffer-substring-no-properties start end))))
+
 (defun nrepl-decode (str)
   "Decode bencoded STR."
   (with-temp-buffer
@@ -230,7 +239,10 @@ To be used for tooling calls (i.e. completion, eldoc, etc)")
 
 (defun nrepl-netstring (string)
   "Encode STRING in bencode."
-  (let ((size (string-bytes string)))
+  (let ((size
+	 (if (featurep 'xemacs)
+	     (length (encode-coding-string string 'utf-8-unix))
+	   (string-bytes string))))
     (format "%s:%s" size string)))
 
 (defun nrepl-bencode (message)
@@ -249,39 +261,45 @@ Bind the value of the provided KEYS and execute BODY."
 
 (defun nrepl-make-response-handler
   (buffer value-handler stdout-handler stderr-handler done-handler
-          &optional eval-error-handler)
+   &optional eval-error-handler)
   "Make a response handler for BUFFER.
 Uses the specified VALUE-HANDLER, STDOUT-HANDLER, STDERR-HANDLER,
 DONE-HANDLER, and EVAL-ERROR-HANDLER as appropriate."
-  (lambda (response)
-    (nrepl-dbind-response response (value ns out err status id ex root-ex
-                                          session)
-      (cond (value
-             (with-current-buffer buffer
-               (when ns (setq nrepl-buffer-ns ns)))
-             (when value-handler
-               (funcall value-handler buffer value)))
-            (out
-             (when stdout-handler
-               (funcall stdout-handler buffer out)))
-            (err
-             (when stderr-handler
-               (funcall stderr-handler buffer err)))
-            (status
-             (when (member "interrupted" status)
-               (message "Evaluation interrupted."))
-             (when (member "eval-error" status)
-               (funcall (or eval-error-handler nrepl-err-handler)
-                        buffer ex root-ex session))
-             (when (member "namespace-not-found" status)
-               (message "Namespace not found."))
-             (when (member "need-input" status)
-               (cider-need-input buffer))
-             (when (member "done" status)
-               (puthash id (gethash id nrepl-pending-requests) nrepl-completed-requests)
-               (remhash id nrepl-pending-requests)
-               (when done-handler
-                 (funcall done-handler buffer))))))))
+  (lexical-let ((buffer buffer)
+                (value-handler value-handler)
+                (stdout-handler stdout-handler)
+                (stderr-handler stderr-handler)
+                (done-handler done-handler)
+                (eval-error-handler eval-error-handler))
+    (lambda (response)
+      (nrepl-dbind-response response (value ns out err status id ex root-ex
+                                            session)
+        (cond (value
+               (with-current-buffer buffer
+                 (when ns (setq nrepl-buffer-ns ns)))
+               (when value-handler
+                 (funcall value-handler buffer value)))
+              (out
+               (when stdout-handler
+                 (funcall stdout-handler buffer out)))
+              (err
+               (when stderr-handler
+                 (funcall stderr-handler buffer err)))
+              (status
+               (when (member "interrupted" status)
+                 (message "Evaluation interrupted."))
+               (when (member "eval-error" status)
+                 (funcall (or eval-error-handler nrepl-err-handler)
+                          buffer ex root-ex session))
+               (when (member "namespace-not-found" status)
+                 (message "Namespace not found."))
+               (when (member "need-input" status)
+                 (cider-need-input buffer))
+               (when (member "done" status)
+                 (puthash id (gethash id nrepl-pending-requests) nrepl-completed-requests)
+                 (remhash id nrepl-pending-requests)
+                 (when done-handler
+                   (funcall done-handler buffer)))))))))
 
 ;;; communication
 (defun nrepl-default-handler (response)
@@ -854,12 +872,13 @@ If so ask the user for confirmation."
   (if (cl-find-if
        (lambda (buffer)
          (let ((buffer (get-buffer buffer)))
-           (or (and endpoint
-                    (equal endpoint
-                           (buffer-local-value 'nrepl-endpoint buffer)))
-               (and project-directory
-                    (equal project-directory
-                           (buffer-local-value 'nrepl-project-dir buffer))))))
+	   (and buffer
+		(or (and endpoint
+			 (equal endpoint
+				(buffer-local-value 'nrepl-endpoint buffer)))
+		    (and project-directory
+			 (equal project-directory
+				(buffer-local-value 'nrepl-project-dir buffer)))))))
        (nrepl-connection-buffers))
       (y-or-n-p
        "An nREPL connection buffer already exists.  Do you really want to create a new one? ")
@@ -881,7 +900,7 @@ If so ask the user for confirmation."
 
 (defun nrepl-describe-handler (process-buffer)
   "Return a handler to describe into PROCESS-BUFFER."
-  (let ((buffer process-buffer))
+  (lexical-let ((buffer process-buffer))
     (lambda (response)
       (nrepl-dbind-response response (ops)
         (cond (ops
@@ -910,7 +929,7 @@ If so ask the user for confirmation."
 
 (defun nrepl-new-tooling-session-handler (process)
   "Create a new tooling session handler for PROCESS."
-  (let ((process process))
+  (lexical-let ((process process))
     (lambda (response)
       (nrepl-dbind-response response (id new-session)
         (cond (new-session
@@ -922,7 +941,7 @@ If so ask the user for confirmation."
 (defun nrepl-new-session-handler (process no-repl-p)
   "Create a new session handler for PROCESS.
 When NO-REPL-P is truthy, suppress creation of a REPL buffer."
-  (let ((process process)
+  (lexical-let ((process process)
                 (no-repl-p no-repl-p))
     (lambda (response)
       (nrepl-dbind-response response (id new-session)
@@ -952,7 +971,9 @@ When NO-REPL-P is truthy, suppress creation of a REPL buffer."
                                        port)))
     (set-process-filter process 'nrepl-net-filter)
     (set-process-sentinel process 'nrepl-sentinel)
-    (set-process-coding-system process 'utf-8-unix 'utf-8-unix)
+    (if (featurep 'xemacs)
+	(set-process-coding-system process 'binary 'utf-8-unix)
+      (set-process-coding-system process 'utf-8-unix 'utf-8-unix))
     (with-current-buffer (process-buffer process)
       (setq nrepl-endpoint `(,host ,port)))
     (let ((nrepl-connection-dispatch (buffer-name (process-buffer process))))

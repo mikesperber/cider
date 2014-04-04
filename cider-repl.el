@@ -36,7 +36,10 @@
 
 (require 'clojure-mode)
 (require 'easymenu)
-(require 'pkg-info)
+(condition-case nil
+    (require 'pkg-info)
+  (error nil))
+(require 'overlay)
 
 (eval-when-compile
   (defvar paredit-version)
@@ -361,7 +364,8 @@ If BACKWARD is non-nil search backward."
 (defun cider-repl-bol ()
   "Go to the beginning of line or the prompt."
   (interactive)
-  (deactivate-mark)
+  (if (fboundp 'deactivate-mark)
+      (deactivate-mark))
   (cider-repl--bol-internal))
 
 (defun cider-repl-bol-mark ()
@@ -1032,9 +1036,13 @@ ENDP) DELIM."
     (define-key map (kbd "C-c M-n") 'cider-repl-set-ns)
     (define-key map (kbd "C-c C-u") 'cider-repl-kill-input)
     (define-key map (kbd "C-a") 'cider-repl-bol)
-    (define-key map (kbd "C-S-a") 'cider-repl-bol-mark)
+    (if (featurep 'xemacs)
+	(define-key map (kbd "C-A") 'cider-repl-bol-mark)
+      (define-key map (kbd "C-S-a") 'cider-repl-bol-mark))
     (define-key map [home] 'cider-repl-bol)
-    (define-key map [S-home] 'cider-repl-bol-mark)
+    (if (featurep 'xemacs)
+	(define-key map '(shift home) 'cider-repl-bol-mark)
+      (define-key map [S-home] 'cider-repl-bol-mark))
     (define-key map (kbd "C-<up>") 'cider-repl-backward-input)
     (define-key map (kbd "C-<down>") 'cider-repl-forward-input)
     (define-key map (kbd "M-p") 'cider-repl-previous-input)
@@ -1079,7 +1087,8 @@ ENDP) DELIM."
                 (define-key cider-repl-mode-map "{" 'paredit-open-curly)
                 (define-key cider-repl-mode-map "}" 'paredit-close-curly)
                 (add-to-list 'paredit-space-for-delimiter-predicates
-                             'cider-space-for-delimiter-p)))))
+                             'cider-space-for-delimiter-p))))
+  (easy-menu-add cider-repl-mode-menu))
 
 (easy-menu-define cider-repl-mode-menu cider-repl-mode-map
   "Menu for CIDER's REPL mode"
