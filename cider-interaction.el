@@ -94,19 +94,29 @@ which will use the default REPL connection."
   :type 'boolean
   :group 'cider)
 
-(defface cider-error-highlight-face
-  '((((supports :underline (:style wave)))
-     (:underline (:style wave :color "red") :inherit unspecified))
-    (t (:inherit font-lock-warning-face :underline t)))
-  "Face used to highlight compilation errors in Clojure buffers."
-  :group 'cider)
+(if (featurep 'xemacs)
+    (defface cider-error-highlight-face
+      '((t (:inherit font-lock-warning-face :underline t)))
+      "Face used to highlight compilation errors in Clojure buffers."
+      :group 'cider)
+  (defface cider-error-highlight-face
+    '((((supports :underline (:style wave)))
+       (:underline (:style wave :color "red") :inherit unspecified))
+      (t (:inherit font-lock-warning-face :underline t)))
+    "Face used to highlight compilation errors in Clojure buffers."
+    :group 'cider))
 
-(defface cider-warning-highlight-face
-  '((((supports :underline (:style wave)))
-     (:underline (:style wave :color "yellow") :inherit unspecified))
-    (t (:inherit font-lock-warning-face :underline (:color "yellow"))))
-  "Face used to highlight compilation warnings in Clojure buffers."
-  :group 'cider)
+(if (featurep 'xemacs)
+    (defface cider-warning-highlight-face
+      '((t (:inherit font-lock-warning-face :underline (:color "yellow"))))
+      "Face used to highlight compilation warnings in Clojure buffers."
+      :group 'cider)
+  (defface cider-warning-highlight-face
+    '((((supports :underline (:style wave)))
+       (:underline (:style wave :color "yellow") :inherit unspecified))
+      (t (:inherit font-lock-warning-face :underline (:color "yellow"))))
+    "Face used to highlight compilation warnings in Clojure buffers."
+    :group 'cider))
 
 ;;; Connection info
 (defun cider--clojure-version ()
